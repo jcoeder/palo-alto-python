@@ -61,7 +61,8 @@ def get_local_users():
     '''
     cmd = '/api/?type=config&action=get&xpath=/config/mgt-config/users'
     local_users = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
-    return local_users
+    for user in local_users['response']['result']['users']['entry']:
+        print('Local User           : ' + user['@name'])
 
 
 def xml_to_dictionary(xml):
@@ -110,6 +111,8 @@ def get_dns_servers():
 
 
 def get_ntp_servers():
+    '''
+    '''
     if 'ntp-servers' in system_config['response']['result']['system']:
         ntp_servers = system_config['response']['result']['system']['ntp-servers']
         if 'primary-ntp-server' in system_config['response']['result']['system']['ntp-servers']:
@@ -126,11 +129,17 @@ def get_ntp_servers():
         print('Secondary NTP Server : 0.0.0.0')
 
 
+def get_code_version():
+    '''
+    '''
+    code_version = 'PanOS ' + system_info['response']['result']['system']['sw-version']
+    print('Code version         : ' + code_version)
+
+
 device = get_device()[0]
 creditials = utils.get_login_creditials()
 system_info = get_system_info()
 system_config = get_system_config()
-local_users = get_local_users()
 
 # Get hostname
 threading.Thread(target=get_hostname, name='get_hostname').start()
@@ -138,8 +147,8 @@ threading.Thread(target=get_hostname, name='get_hostname').start()
 # Get system time
 threading.Thread(target=get_system_time, name='get_system_time').start()
 
-code_version = 'PanOS ' + system_info['response']['result']['system']['sw-version']
-print('Code version         : ' + code_version)
+# Get code version
+threading.Thread(target=get_code_version, name='get_code_version').start()
 
 # Get DNS Servers
 threading.Thread(target=get_dns_servers, name='get_dns_servers').start()
@@ -147,6 +156,9 @@ threading.Thread(target=get_dns_servers, name='get_dns_servers').start()
 # Get NTP Servers
 threading.Thread(target=get_ntp_servers, name='get_ntp_servers').start()
 
+# Get Local Users
+threading.Thread(target=get_local_users, name='get_local_users').start()
+
 # Print Raw Data for Audit
-print(system_info)
-print(system_config)
+# print(system_info)
+# print(system_config)
