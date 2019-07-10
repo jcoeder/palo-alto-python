@@ -6,12 +6,10 @@ This works on either a clustered pair or stand alone device.
 
 Only tested on version 8.0.0 and above.
 
+```
 git clone
-
 cd palo-alto-python
-
 virtualenv . -p /usr/bin/python3
-
 source bin/activate
-
 pip install -r requirements.txt 
+```
