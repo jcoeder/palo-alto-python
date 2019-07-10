@@ -145,7 +145,7 @@ def check_if_device_booted():
         print('***** Waiting for device to boot. Wait time: ' + str(time.time() - start_time) + ' *****\r', end='')
 
 
-def bordered(text):
+def bordered_text(text):
     '''
     Prints a box around text.
     '''

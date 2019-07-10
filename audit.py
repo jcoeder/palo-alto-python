@@ -1,13 +1,10 @@
 #!/usr/bin/python3
 
-import getpass
 import requests
 import xmltodict
-import datetime
-import time
 import utils
 import threading
-
+import pprint
 
 # Disable SSL Warnings
 requests.urllib3.disable_warnings()
@@ -80,7 +77,7 @@ def get_hostname():
     Using system_info, extract the hostname and print it to the screen.
     '''
     hostname = system_info['response']['result']['system']['hostname']
-    print('Hostname : ' + hostname)
+    print('Hostname             : ' + hostname)
 
 
 def get_system_time():
@@ -88,15 +85,45 @@ def get_system_time():
     Using system_info, extract the current system time.
     '''
     system_time = system_info['response']['result']['system']['time']
-    print('System time : ' + system_time)
+    print('System time          : ' + system_time)
 
 
 def get_dns_servers():
     '''
     Using the system config, extract the DNS servers configuration.
     '''
-    dns_servers = system_config['response']['result']['system']['dns-setting']
-    print(dns_servers)
+    if 'dns-setting' in system_config['response']['result']['system']:
+        dns_servers = system_config['response']['result']['system']['dns-setting']
+        if 'servers' in system_config['response']['result']['system']['dns-setting']:
+            if 'primary' in system_config['response']['result']['system']['dns-setting']['servers']:
+                print('Primary DNS Server   : ' + dns_servers['servers']['primary'])
+            else:
+                print('Primary DNS Server   : 0.0.0.0')
+
+            if 'secondary' in system_config['response']['result']['system']['dns-setting']['servers']:
+                print('Secondary DNS Server : ' + dns_servers['servers']['secondary'])
+            else:
+                print('Secondary NTP Server : 0.0.0.0')
+    else:
+        print('Primary DNS Server   : 0.0.0.0')
+        print('Secondary DNS Server : 0.0.0.0')
+
+
+def get_ntp_servers():
+    if 'ntp-servers' in system_config['response']['result']['system']:
+        ntp_servers = system_config['response']['result']['system']['ntp-servers']
+        if 'primary-ntp-server' in system_config['response']['result']['system']['ntp-servers']:
+            print('Primary NTP Server   : '+ ntp_servers['primary-ntp-server']['ntp-server-address'])
+        else:
+            print('Primary NTP Server   : 0.0.0.0')
+
+        if 'secondary-ntp-server' in system_config['response']['result']['system']['ntp-servers']:
+            print('Secondary NTP Server : ' + ntp_servers['secondary-ntp-server']['ntp-server-address'])
+        else:
+            print('Secondary NTP Server : 0.0.0.0')
+    else:
+        print('Primary NTP Server   : 0.0.0.0')
+        print('Secondary NTP Server : 0.0.0.0')
 
 
 device = get_device()[0]
@@ -112,11 +139,14 @@ threading.Thread(target=get_hostname, name='get_hostname').start()
 threading.Thread(target=get_system_time, name='get_system_time').start()
 
 code_version = 'PanOS ' + system_info['response']['result']['system']['sw-version']
-print('Code version : ' + code_version)
+print('Code version         : ' + code_version)
 
 # Get DNS Servers
 threading.Thread(target=get_dns_servers, name='get_dns_servers').start()
 
+# Get NTP Servers
+threading.Thread(target=get_ntp_servers, name='get_ntp_servers').start()
+
+# Print Raw Data for Audit
+print(system_info)
 print(system_config)
-ntp_servers = system_config['response']['result']['system']['ntp-servers']
-print(ntp_servers)
