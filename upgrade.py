@@ -997,10 +997,42 @@ def get_desired_version():
     return desired_version
 
 
+def get_major_minor_base_release():
+    '''
+    If current version is 8.1.9 and desired version is 9.0.3.  9.0.0 must also
+    be downloaded but does not have to be installed.
+    '''
+    if Version(desired_version).release[0] > Version(current_version_string).release[0]:
+        base_version = str(Version(desired_version).release[0]) + '.0' + '.0'
+        print('Downloading base version ' + base_version + '.')
+        return base_version
+    elif (Version(desired_version).release[0] == Version(current_version_string).release[0]) and (Version(desired_version).release[1] > Version(current_version_string).release[1]):
+        base_version = str(Version(desired_version).release[0]) + '.' + str(Version(desired_version).release[1]) + '.0'
+        print('Downloading base version ' + base_version + '.')
+        return base_version
+    elif (Version(desired_version).release[0] == Version(current_version_string).release[0]) and (Version(desired_version).release[1] == Version(current_version_string).release[1]):
+        return None
+
+
+def download_base_software():
+    '''
+    '''
+    # Start the download of the software and capture the Job ID
+    base_version = get_major_minor_base_release()
+    if base_version != None:
+        cmd = '/api/?type=op&cmd=<request><system><software><download><version>' +\
+            base_version + '</version><sync-to-peer>yes</sync-to-peer></download></software></system></request>'
+        job_info = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+        monitor_job_status(get_job_id(job_info))
+    else:
+        pass
+
+
 def download_software():
     '''
     '''
     # Start the download of the software and capture the Job ID
+    monitor_job_status(get_job_id(job_info))
     print('Downloading version ' + desired_version + '.')
     if ha_info['response']['result']['enabled'] == 'no':
         cmd = '/api/?type=op&cmd=<request><system><software><download><version>' +\
@@ -1106,6 +1138,7 @@ if ha_info['response']['result']['enabled'] == 'no':
     desired_version = get_desired_version()
 
     # Download and install software
+    download_base_software()
     download_software()
     install_software()
 
@@ -1193,6 +1226,7 @@ elif ha_info['response']['result']['enabled'] == 'yes' and ha_info['response']['
     desired_version = get_desired_version()
 
     # Download software to both devices
+    download_base_software()
     download_software()
 
     # Change context to passive device
@@ -1314,6 +1348,7 @@ elif ha_info['response']['result']['enabled'] == 'yes' and ha_info['response']['
     desired_version = get_desired_version()
 
     # Download software to both devices
+    download_base_software()
     download_software()
 
     # Change context to secondary device
