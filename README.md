@@ -18,6 +18,6 @@ pip install -r requirements.txt
 
 ## Run the script
 ```
-chmod +x upgrade.py
-./upgrade.py
+source venv/bin/activate
+python upgrade.py
 ```
