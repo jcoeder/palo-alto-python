@@ -9,7 +9,7 @@ Only tested on version 8.0.0 and above.
 ```
 git clone
 cd palo-alto-python
-virtualenv . -p /usr/bin/python3
-source bin/activate
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt 
 ```
