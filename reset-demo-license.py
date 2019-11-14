@@ -1,5 +1,3 @@
-#!/usr/bin/python3
-
 import utils
 import keys_license
 import time
