@@ -6,10 +6,18 @@ This works on either a clustered pair or stand alone device.
 
 Only tested on version 8.0.0 and above.
 
+## Prepare the environment
 ```
 git clone https://github.com/jcoeder/palo-alto-python.git
 cd palo-alto-python
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt 
+```
+
+
+## Run the script
+```
+chmod +x upgrade.py
+./upgrade.py
 ```
