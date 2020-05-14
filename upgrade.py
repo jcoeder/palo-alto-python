@@ -944,6 +944,38 @@ def update_anti_virus():
         print('Latest anti-virus definitions installed.')
 
 
+def upgrade_vm_plugin():
+    '''
+    Download VM Plugins
+
+    WORK IN PROGRESS!!!!!!!!!!!!
+    '''
+    if 'PA-VM' in feature_list:
+        print('Updating VM Plugin')
+        cmd = '/api/?type=op&cmd=<request><plugins><check></check></plugins></request>'
+        check_status = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+        if check_status['response']['@status'] == 'success':
+            pass
+        else:
+            print('Checking for lastest VM Plugin failed.  Please check device Internet connection, licensing, and logs.')
+            exit()
+        print('Downloading latest VM Plugin.')
+        cmd = '/api/?type=op&cmd=<request><plugins><download></download></plugins></request>'
+        job_info = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+        job_id = get_job_id(job_info)
+        monitor_job_status(job_id)
+        print('Latest VM plugins downloaded.')
+        cmd = '/api/?type=op&cmd=<show><plugins><packages></packages></plugins></show>'
+        available_plugins = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+        print(available_plugins)
+        available_versions = []
+        for version in available_plugins['response']['result']['plugins']['entry']:
+            available_versions.append(version)
+        latest_version = max(available_versions)
+        print(available_plugins)
+        print(latest_version)
+
+
 def diff_candidate_running_config(candidate_configuration, running_configuration):
     '''
     Compare the running vs the candidate configuration and ask the user to continue.
