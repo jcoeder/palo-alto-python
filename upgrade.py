@@ -1030,7 +1030,6 @@ def download_software():
     '''
     '''
     # Start the download of the software and capture the Job ID
-    monitor_job_status(get_job_id(job_info))
     print('Downloading version ' + desired_version + '.')
     if ha_info['response']['result']['enabled'] == 'no':
         cmd = '/api/?type=op&cmd=<request><system><software><download><version>' +\
