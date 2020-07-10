@@ -10,6 +10,7 @@ from packaging.version import Version, parse, LegacyVersion
 import utils
 
 debug_to_console = True
+fast_upgrade = False
 
 '''
 need to add wildfire check - /api/?type=op&cmd=<request><wildfire><upgrade><check></check></upgrade></wildfire></request>
@@ -235,6 +236,9 @@ def palo_alto_api_call(device, cmd, timeout=None, **creditials):
 
 
 def get_software_info():
+    '''
+    Captures generic information about the software including the version.
+    '''
     cmd = '/api/?type=op&cmd=<request><system><software><info></info></software></system></request>'
     software_info = xml_to_dictionary(
         palo_alto_api_call(device, cmd, **creditials)
@@ -243,6 +247,9 @@ def get_software_info():
 
 
 def delete_non_current_software():
+    '''
+    Deletes versions older than the current version to clean up disk space.
+    '''
     software_info = get_software_info()
     if software_info['response']['@status'] == 'error':
         pass
@@ -265,6 +272,7 @@ def fetch_licensing():
 
 def get_licensing_infomation():
     '''
+    Captures currently licensed features.
     '''
     cmd = '/api/?type=op&cmd=<request><license><info></info></license></request>'
     licensing_infomation = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
@@ -508,6 +516,8 @@ def all_upgrade_versions():
     version and provide them as a list to the user.
 
     all_upgrade_versions is a list of strings ['8.1.6', '8.1.5', '8.1.4', '8.1.3', '8.1.2']
+
+    This should be reworked to use regex
     '''
     all_available_versions_list = []
     all_upgrade_versions = []
@@ -515,6 +525,7 @@ def all_upgrade_versions():
         all_available_versions_list.append(versions['version'])
 
     for entry in all_available_versions_list:
+        print(entry)
         if LegacyVersion(entry) > LegacyVersion(current_version_string):
             all_upgrade_versions.append(entry)
     return all_upgrade_versions
@@ -788,27 +799,30 @@ def download_global_protect_client():
     Check for available Global Protect client versions.  Download the latest
     version.  DOES NOT INSTALL.  This should be manually installed when desired.
     '''
-    if 'GlobalProtect Portal' and 'GlobalProtect Gateway' in feature_list:
-        print('Downloading latest Global Protect client.')
-        cmd = '/api/?type=op&cmd=<request><global-protect-client><software><check></check></software></global-protect-client></request>'
-        check_status = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
-        if check_status['response']['@status'] == 'success':
-            pass
-        else:
-            print('Checking for lastest Global Protect version failed.  Please check device Internet connection, licensing, and logs.')
-            exit()
-        cmd = '/api/?type=op&cmd=<request><global-protect-client><software><info></info></software></global-protect-client></request>'
-        global_protect_versions = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
-        download_version = global_protect_versions['response']['result']['sw-updates']['versions']['entry'][0]['version']
-        if ha_info['response']['result']['enabled'] == 'no':
-            cmd = '/api/?type=op&cmd=<request><global-protect-client><software><download><version>' + download_version + '</version></download></software></global-protect-client></request>'
-        elif ha_info['response']['result']['enabled'] == 'yes':
-            cmd = '/api/?type=op&cmd=<request><global-protect-client><software><download><version>' + download_version + '</version><sync-to-peer>yes</sync-to-peer></download></software></global-protect-client></request>'
-        job_info = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
-        job_id = get_job_id(job_info)
-        monitor_job_status(job_id)
-        print('Downloaded latest Global Protect client.')
-        print('Please manually install the client later.')
+    if fast_upgrade == True:
+        pass
+    else:
+        if 'GlobalProtect Portal' and 'GlobalProtect Gateway' in feature_list:
+            print('Downloading latest Global Protect client.')
+            cmd = '/api/?type=op&cmd=<request><global-protect-client><software><check></check></software></global-protect-client></request>'
+            check_status = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+            if check_status['response']['@status'] == 'success':
+                pass
+            else:
+                print('Checking for lastest Global Protect version failed.  Please check device Internet connection, licensing, and logs.')
+                exit()
+            cmd = '/api/?type=op&cmd=<request><global-protect-client><software><info></info></software></global-protect-client></request>'
+            global_protect_versions = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+            download_version = global_protect_versions['response']['result']['sw-updates']['versions']['entry'][0]['version']
+            if ha_info['response']['result']['enabled'] == 'no':
+                cmd = '/api/?type=op&cmd=<request><global-protect-client><software><download><version>' + download_version + '</version></download></software></global-protect-client></request>'
+            elif ha_info['response']['result']['enabled'] == 'yes':
+                cmd = '/api/?type=op&cmd=<request><global-protect-client><software><download><version>' + download_version + '</version><sync-to-peer>yes</sync-to-peer></download></software></global-protect-client></request>'
+            job_info = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+            job_id = get_job_id(job_info)
+            monitor_job_status(job_id)
+            print('Downloaded latest Global Protect client.')
+            print('Please manually install the client later.')
 
 
 def delete_cached_content():
@@ -822,126 +836,135 @@ def delete_cached_content():
 def update_content_filtering():
     '''
     '''
-    if 'PAN-DB URL Filtering' in feature_list:
-        # Delete cached content filtering
-        delete_cached_content()
+    if fast_upgrade == True:
+        pass
+    else:
+        if 'PAN-DB URL Filtering' in feature_list:
+            # Delete cached content filtering
+            delete_cached_content()    
 
-        # Check for latest content filtering
-        print('Updating latest content filtering database.')
-        cmd = '/api/?type=op&cmd=<request><content><upgrade><check></check></upgrade></content></request>'
-        check_status = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
-        if check_status['response']['@status'] == 'success':
-            pass
-        else:
-            print('Checking for lastest content filtering database failed.  Please check device Internet connection, licensing, and logs.')
-            exit()
-
-        # Download latest content filtering
-        print('Downloading latest content database.')
-        # Standalone doesn't require sync-to-peer
-        if ha_info['response']['result']['enabled'] == 'no':
-            cmd = '/api/?type=op&cmd=<request><content><upgrade><download><latest></latest></download></upgrade></content></request>'
-        elif ha_info['response']['result']['enabled'] == 'yes':
-            # HA requires sync-to-peer
-            if Version(current_version_string) < Version('8.0.5'):
-                # Earlier versions expect sync-to-peer inside of latest
-                cmd = '/api/?type=op&cmd=<request><content><upgrade><download><latest><sync-to-peer>yes</sync-to-peer></latest></download></upgrade></content></request>'
+            # Check for latest content filtering
+            print('Updating latest content filtering database.')
+            cmd = '/api/?type=op&cmd=<request><content><upgrade><check></check></upgrade></content></request>'
+            check_status = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+            if check_status['response']['@status'] == 'success':
+                pass
             else:
-                # Later versions place sync-to-peer and latest inside download.
-                cmd = '/api/?type=op&cmd=<request><content><upgrade><download><sync-to-peer>yes</sync-to-peer><latest></latest></download></upgrade></content></request>'
-        job_info = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
-        job_id = get_job_id(job_info)
-        monitor_job_status(job_id)
+                print('Checking for lastest content filtering database failed.  Please check device Internet connection, licensing, and logs.')
+                exit()    
 
-        # Install latest content filtering
-        print('Installing latest content database.')
-        if ha_info['response']['result']['enabled'] == 'no':
-            cmd = '/api/?type=op&cmd=<request><content><upgrade><install><version>latest</version></install></upgrade></content></request>'
-        elif ha_info['response']['result']['enabled'] == 'yes':
-            cmd = '/api/?type=op&cmd=<request><content><upgrade><install><version>latest</version><sync-to-peer>yes</sync-to-peer></install></upgrade></content></request>'
-        job_info = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
-        job_id = get_job_id(job_info)
-        monitor_job_status(job_id)
-        print('Latest content database installed.')
+            # Download latest content filtering
+            print('Downloading latest content database.')
+            # Standalone doesn't require sync-to-peer
+            if ha_info['response']['result']['enabled'] == 'no':
+                cmd = '/api/?type=op&cmd=<request><content><upgrade><download><latest></latest></download></upgrade></content></request>'
+            elif ha_info['response']['result']['enabled'] == 'yes':
+                # HA requires sync-to-peer
+                if Version(current_version_string) < Version('8.0.5'):
+                    # Earlier versions expect sync-to-peer inside of latest
+                    cmd = '/api/?type=op&cmd=<request><content><upgrade><download><latest><sync-to-peer>yes</sync-to-peer></latest></download></upgrade></content></request>'
+                else:
+                    # Later versions place sync-to-peer and latest inside download.
+                    cmd = '/api/?type=op&cmd=<request><content><upgrade><download><sync-to-peer>yes</sync-to-peer><latest></latest></download></upgrade></content></request>'
+            job_info = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+            job_id = get_job_id(job_info)
+            monitor_job_status(job_id)    
+
+            # Install latest content filtering
+            print('Installing latest content database.')
+            if ha_info['response']['result']['enabled'] == 'no':
+                cmd = '/api/?type=op&cmd=<request><content><upgrade><install><version>latest</version></install></upgrade></content></request>'
+            elif ha_info['response']['result']['enabled'] == 'yes':
+                cmd = '/api/?type=op&cmd=<request><content><upgrade><install><version>latest</version><sync-to-peer>yes</sync-to-peer></install></upgrade></content></request>'
+            job_info = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+            job_id = get_job_id(job_info)
+            monitor_job_status(job_id)
+            print('Latest content database installed.')
 
 
 def update_wildfire():
     '''
     '''
-    if 'WildFire License' in feature_list:
-        print('Updating Wildfire database.')
-        cmd = '/api/?type=op&cmd=<request><wildfire><upgrade><check></check></upgrade></wildfire></request>'
-        check_status = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
-        if check_status['response']['@status'] == 'success':
-            pass
-        elif check_status['response']['@status'] == 'error' and check_status['response']['msg']['line'] == 'No update available':
-            print('No Wildfire updates available.')
-            return None
-        else:
-            print('Checking for lastest Wildfire failed.  Please check device Internet connection, licensing, and logs.')
-            exit()
+    if fast_upgrade == True:
+        pass
+    else:
+        if 'WildFire License' in feature_list:
+            print('Updating Wildfire database.')
+            cmd = '/api/?type=op&cmd=<request><wildfire><upgrade><check></check></upgrade></wildfire></request>'
+            check_status = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+            if check_status['response']['@status'] == 'success':
+                pass
+            elif check_status['response']['@status'] == 'error' and check_status['response']['msg']['line'] == 'No update available':
+                print('No Wildfire updates available.')
+                return None
+            else:
+                print('Checking for lastest Wildfire failed.  Please check device Internet connection, licensing, and logs.')
+                exit()    
 
-        print('Downloading latest Wildfire database.')
-        if ha_info['response']['result']['enabled'] == 'no':
-            cmd = '/api/?type=op&cmd=<request><wildfire><upgrade><download><latest></latest></download></upgrade></wildfire></request>'
-        elif ha_info['response']['result']['enabled'] == 'yes':
-            cmd = '/api/?type=op&cmd=<request><wildfire><upgrade><download><latest><sync-to-peer>yes</sync-to-peer></latest></download></upgrade></wildfire></request>'
-        response = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
-        if response['response']['@status'] == 'error' and response['response']['msg']['line'] == 'No update available':
-            print('No Wildfire updates available.')
-            return None
-        else:
-            pass
-        job_info = response
-        job_id = get_job_id(job_info)
-        monitor_job_status(job_id)
+            print('Downloading latest Wildfire database.')
+            if ha_info['response']['result']['enabled'] == 'no':
+                cmd = '/api/?type=op&cmd=<request><wildfire><upgrade><download><latest></latest></download></upgrade></wildfire></request>'
+            elif ha_info['response']['result']['enabled'] == 'yes':
+                cmd = '/api/?type=op&cmd=<request><wildfire><upgrade><download><latest><sync-to-peer>yes</sync-to-peer></latest></download></upgrade></wildfire></request>'
+            response = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+            if response['response']['@status'] == 'error' and response['response']['msg']['line'] == 'No update available':
+                print('No Wildfire updates available.')
+                return None
+            else:
+                pass
+            job_info = response
+            job_id = get_job_id(job_info)
+            monitor_job_status(job_id)    
 
-        print('Installing latest Wildfire database.')
-        if ha_info['response']['result']['enabled'] == 'no':
-            cmd = '/api/?type=op&cmd=<request><wildfire><upgrade><install><version>latest</version></install></upgrade></wildfire></request>'
-        elif ha_info['response']['result']['enabled'] == 'yes':
-            cmd = '/api/?type=op&cmd=<request><wildfire><upgrade><install><version>latest</version><sync-to-peer>yes</sync-to-peer></install></upgrade></wildfire></request>'
-        job_info = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
-        job_id = get_job_id(job_info)
-        monitor_job_status(job_id)
-        print('Latest Wildfire database installed.')
+            print('Installing latest Wildfire database.')
+            if ha_info['response']['result']['enabled'] == 'no':
+                cmd = '/api/?type=op&cmd=<request><wildfire><upgrade><install><version>latest</version></install></upgrade></wildfire></request>'
+            elif ha_info['response']['result']['enabled'] == 'yes':
+                cmd = '/api/?type=op&cmd=<request><wildfire><upgrade><install><version>latest</version><sync-to-peer>yes</sync-to-peer></install></upgrade></wildfire></request>'
+            job_info = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+            job_id = get_job_id(job_info)
+            monitor_job_status(job_id)
+            print('Latest Wildfire database installed.')
 
 
 def update_anti_virus():
     '''
     Threat Prevention
     '''
-    if 'Threat Prevention' in feature_list:
-        print('Updating anti-virus definitions.')
-        cmd = '/api/?type=op&cmd=<request><anti-virus><upgrade><check></check></upgrade></anti-virus></request>'
-        check_status = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
-        if check_status['response']['@status'] == 'success':
-            pass
-        else:
-            print('Checking for lastest anti-virus definitions failed.  Please check device Internet connection, licensing, and logs.')
-            exit()
-        print('Downloading latest anti-virus definitions.')
-        if ha_info['response']['result']['enabled'] == 'no':
-            cmd = '/api/?type=op&cmd=<request><anti-virus><upgrade><download><latest></latest></download></upgrade></anti-virus></request>'
-        elif ha_info['response']['result']['enabled'] == 'yes':
-            if Version(current_version_string) < Version('8.0.5'):
-                # Earlier versions expect sync-to-peer inside of latest
-                cmd = '/api/?type=op&cmd=<request><anti-virus><upgrade><download><latest><sync-to-peer>yes</sync-to-peer></latest></download></upgrade></anti-virus></request>'
+    if fast_upgrade == True:
+        pass
+    else:
+        if 'Threat Prevention' in feature_list:
+            print('Updating anti-virus definitions.')
+            cmd = '/api/?type=op&cmd=<request><anti-virus><upgrade><check></check></upgrade></anti-virus></request>'
+            check_status = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+            if check_status['response']['@status'] == 'success':
+                pass
             else:
-                # Later versions place sync-to-peer and latest inside download.
-                cmd = '/api/?type=op&cmd=<request><anti-virus><upgrade><download><sync-to-peer>yes</sync-to-peer><latest></latest></download></upgrade></anti-virus></request>'
-        job_info = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
-        job_id = get_job_id(job_info)
-        monitor_job_status(job_id)
-        print('Installing latest anti-virus definitions.')
-        if ha_info['response']['result']['enabled'] == 'no':
-            cmd = '/api/?type=op&cmd=<request><anti-virus><upgrade><install><version>latest</version></install></upgrade></anti-virus></request>'
-        elif ha_info['response']['result']['enabled'] == 'yes':
-            cmd = '/api/?type=op&cmd=<request><anti-virus><upgrade><install><version>latest</version><sync-to-peer>yes</sync-to-peer></install></upgrade></anti-virus></request>'
-        job_info = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
-        job_id = get_job_id(job_info)
-        monitor_job_status(job_id)
-        print('Latest anti-virus definitions installed.')
+                print('Checking for lastest anti-virus definitions failed.  Please check device Internet connection, licensing, and logs.')
+                exit()
+            print('Downloading latest anti-virus definitions.')
+            if ha_info['response']['result']['enabled'] == 'no':
+                cmd = '/api/?type=op&cmd=<request><anti-virus><upgrade><download><latest></latest></download></upgrade></anti-virus></request>'
+            elif ha_info['response']['result']['enabled'] == 'yes':
+                if Version(current_version_string) < Version('8.0.5'):
+                    # Earlier versions expect sync-to-peer inside of latest
+                    cmd = '/api/?type=op&cmd=<request><anti-virus><upgrade><download><latest><sync-to-peer>yes</sync-to-peer></latest></download></upgrade></anti-virus></request>'
+                else:
+                    # Later versions place sync-to-peer and latest inside download.
+                    cmd = '/api/?type=op&cmd=<request><anti-virus><upgrade><download><sync-to-peer>yes</sync-to-peer><latest></latest></download></upgrade></anti-virus></request>'
+            job_info = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+            job_id = get_job_id(job_info)
+            monitor_job_status(job_id)
+            print('Installing latest anti-virus definitions.')
+            if ha_info['response']['result']['enabled'] == 'no':
+                cmd = '/api/?type=op&cmd=<request><anti-virus><upgrade><install><version>latest</version></install></upgrade></anti-virus></request>'
+            elif ha_info['response']['result']['enabled'] == 'yes':
+                cmd = '/api/?type=op&cmd=<request><anti-virus><upgrade><install><version>latest</version><sync-to-peer>yes</sync-to-peer></install></upgrade></anti-virus></request>'
+            job_info = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+            job_id = get_job_id(job_info)
+            monitor_job_status(job_id)
+            print('Latest anti-virus definitions installed.')
 
 
 def upgrade_vm_plugin():
@@ -1032,15 +1055,17 @@ def get_major_minor_base_release():
     If current version is 8.1.9 and desired version is 9.0.3.  9.0.0 must also
     be downloaded but does not have to be installed.
     '''
-    if Version(desired_version).release[0] > Version(current_version_string).release[0]:
-        base_version = str(Version(desired_version).release[0]) + '.0' + '.0'
+    #Desired version my be '9.0.0-h1'.  If that is the case we must split off the tail.
+    desired_version_split = desired_version.split('-')[0]
+    if Version(desired_version_split).release[0] > Version(current_version_string).release[0]:
+        base_version = str(Version(desired_version_split).release[0]) + '.0' + '.0'
         print('Downloading base version ' + base_version + '.')
         return base_version
-    elif (Version(desired_version).release[0] == Version(current_version_string).release[0]) and (Version(desired_version).release[1] > Version(current_version_string).release[1]):
-        base_version = str(Version(desired_version).release[0]) + '.' + str(Version(desired_version).release[1]) + '.0'
+    elif (Version(desired_version_split).release[0] == Version(current_version_string).release[0]) and (Version(desired_version_split).release[1] > Version(current_version_string).release[1]):
+        base_version = str(Version(desired_version_split).release[0]) + '.' + str(Version(desired_version_split).release[1]) + '.0'
         print('Downloading base version ' + base_version + '.')
         return base_version
-    elif (Version(desired_version).release[0] == Version(current_version_string).release[0]) and (Version(desired_version).release[1] == Version(current_version_string).release[1]):
+    elif (Version(desired_version_split).release[0] == Version(current_version_string).release[0]) and (Version(desired_version_split).release[1] == Version(current_version_string).release[1]):
         return None
 
 
