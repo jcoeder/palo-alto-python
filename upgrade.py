@@ -1057,15 +1057,17 @@ def get_major_minor_base_release():
     '''
     #Desired version my be '9.0.0-h1'.  If that is the case we must split off the tail.
     desired_version_split = desired_version.split('-')[0]
-    if Version(desired_version_split).release[0] > Version(current_version_string).release[0]:
+    #Current version my be '9.0.0-h1'.  If that is the case we must split off the tail.
+    current_version_string_split = current_version_string.split('-')[0]
+    if Version(desired_version_split).release[0] > Version(current_version_string_split).release[0]:
         base_version = str(Version(desired_version_split).release[0]) + '.0' + '.0'
         print('Downloading base version ' + base_version + '.')
         return base_version
-    elif (Version(desired_version_split).release[0] == Version(current_version_string).release[0]) and (Version(desired_version_split).release[1] > Version(current_version_string).release[1]):
+    elif (Version(desired_version_split).release[0] == Version(current_version_string_split).release[0]) and (Version(desired_version_split).release[1] > Version(current_version_string_split).release[1]):
         base_version = str(Version(desired_version_split).release[0]) + '.' + str(Version(desired_version_split).release[1]) + '.0'
         print('Downloading base version ' + base_version + '.')
         return base_version
-    elif (Version(desired_version_split).release[0] == Version(current_version_string).release[0]) and (Version(desired_version_split).release[1] == Version(current_version_string).release[1]):
+    elif (Version(desired_version_split).release[0] == Version(current_version_string_split).release[0]) and (Version(desired_version_split).release[1] == Version(current_version_string_split).release[1]):
         return None
 
 
