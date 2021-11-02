@@ -10,7 +10,7 @@ from packaging.version import Version, parse, LegacyVersion
 import utils
 
 debug_to_console = True
-fast_upgrade = False
+fast_upgrade = True
 
 '''
 need to add wildfire check - /api/?type=op&cmd=<request><wildfire><upgrade><check></check></upgrade></wildfire></request>
@@ -336,7 +336,7 @@ def licensed_features():
         for entry in licensed_infomation['response']['result']['licenses']['entry']:
             if entry['expired'] == 'no':
                 feature_list.append(entry['feature'])
-    print(feature_list)
+    #print(feature_list)
     return feature_list
 
 
@@ -367,6 +367,19 @@ def xml_configuration_to_file(configuration, prefix):
     configuration_backup_file.write(configuration)
     file_name = configuration_backup_file.name
     return file_name
+
+
+def save_snapshot(device):
+    '''
+	Save a snapshot of the configuration locally to the device.
+	This needs to be performed individually on each device.
+	/api/?type=op&cmd=<save><config><to></to></config></save>
+	'''
+    snapshot_name = 'PRE_UPGRADE_' + datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    print('Creating snapshot ' + snapshot_name)
+    cmd = '/api/?type=op&cmd=<save><config><to>' + snapshot_name + '</to></config></save>'
+    palo_alto_api_call(device, cmd, **creditials)
+    print('Snapshot ' + snapshot_name + ' created.')
 
 
 def get_ha_devices():
@@ -525,7 +538,8 @@ def all_upgrade_versions():
         all_available_versions_list.append(versions['version'])
 
     for entry in all_available_versions_list:
-        print(entry)
+        #print for troubleshooting value of list
+		#print(entry)
         if LegacyVersion(entry) > LegacyVersion(current_version_string):
             all_upgrade_versions.append(entry)
     return all_upgrade_versions
@@ -641,12 +655,37 @@ def rollback_uncommited_changes():
     palo_alto_api_call(device, cmd, **creditials)
 
 
+def normalize_versions(version):
+    '''
+	Need to turn H and xfr releases into numbers that can be evaluated.
+    -h1, h2 releases = .1, .2
+	.xfr releases. = .0.1
+	-h.xfr releas = .1.1
+    '''
+    # Replace - in version with .
+    version = version.replace('-','.')
+    # Drop the h in the version string
+    version = version.replace('h','')
+    # If the current version now has 4 decimals and .xfr, replace .xfr with .1
+    version = re.sub(r'(^\b([0-9]|[0-9][0-9]|100)\b.\b([0-9]|[0-9][0-9]|100)\b.\b([0-9]|[0-9][0-9]|100)\b.\b([0-9]|[0-9][0-9]|100)\b).xfr', r'\1''.1', version)
+    # If the current version now has 3 decimals and .xfr, replace .xfr with .0.1
+    version = re.sub(r'(^\b([0-9]|[0-9][0-9]|100)\b.\b([0-9]|[0-9][0-9]|100)\b.\b([0-9]|[0-9][0-9]|100)\b).xfr', r'\1''.0.1', version)
+    return version
+
+
 def get_current_version_string(system_info):
     '''
     Using system_info get the sw-version.  Return this version
-    as a string.
+    as a string.  This will support version numbering up to 100.
     '''
     current_version_string = system_info['response']['result']['system']['sw-version']
+    '''
+	Need to turn H and xfr releases into numbers that can be evaluated.
+    -h1, h2 releases = .1, .2
+	.xfr releases. = .0.1
+	-h.xfr releas = .1.1
+    '''
+    current_version_string = normalize_versions(version=current_version_string)
     return current_version_string
 
 
@@ -657,10 +696,13 @@ def check_version_after_reboot():
     '''
     system_info_after_upgrade = get_system_info()
     version_after_upgrade = get_current_version_string(system_info_after_upgrade)
-    if version_after_upgrade == desired_version:
-        print('Successfully updated to ' + desired_version + '.')
+    version_after_upgrade = normalize_versions(version=version_after_upgrade)
+    target_version = normalize_versions(version=desired_version)
+    if version_after_upgrade == target_version:
+        print('Successfully updated to ' + target_version + '.')
     else:
         print('Software did NOT successfully update.')
+        exit()
 
 
 def get_current_version_list():
@@ -860,7 +902,8 @@ def update_content_filtering():
                 cmd = '/api/?type=op&cmd=<request><content><upgrade><download><latest></latest></download></upgrade></content></request>'
             elif ha_info['response']['result']['enabled'] == 'yes':
                 # HA requires sync-to-peer
-                if Version(current_version_string) < Version('8.0.5'):
+                current_version_normalized = normalize_versions(current_version_string)
+                if Version(current_version_normalized) < Version('8.0.5'):
                     # Earlier versions expect sync-to-peer inside of latest
                     cmd = '/api/?type=op&cmd=<request><content><upgrade><download><latest><sync-to-peer>yes</sync-to-peer></latest></download></upgrade></content></request>'
                 else:
@@ -947,7 +990,8 @@ def update_anti_virus():
             if ha_info['response']['result']['enabled'] == 'no':
                 cmd = '/api/?type=op&cmd=<request><anti-virus><upgrade><download><latest></latest></download></upgrade></anti-virus></request>'
             elif ha_info['response']['result']['enabled'] == 'yes':
-                if Version(current_version_string) < Version('8.0.5'):
+                current_version_normalized = normalize_versions(current_version_string)
+                if Version(current_version_normalized) < Version('8.0.5'):
                     # Earlier versions expect sync-to-peer inside of latest
                     cmd = '/api/?type=op&cmd=<request><anti-virus><upgrade><download><latest><sync-to-peer>yes</sync-to-peer></latest></download></upgrade></anti-virus></request>'
                 else:
@@ -967,7 +1011,7 @@ def update_anti_virus():
             print('Latest anti-virus definitions installed.')
 
 
-def upgrade_vm_plugin():
+def upgrade_vm_plugin(device):
     '''
     Download VM Plugins
 
@@ -982,21 +1026,37 @@ def upgrade_vm_plugin():
         else:
             print('Checking for lastest VM Plugin failed.  Please check device Internet connection, licensing, and logs.')
             exit()
-        print('Downloading latest VM Plugin.')
-        cmd = '/api/?type=op&cmd=<request><plugins><download></download></plugins></request>'
+        plugin_version = input('Provide VM-Series Plugin version.  Press enter to pass.  Ex: vm_series-1.0.5 : ')
+        if plugin_version == '':
+            return None
+        plugin_version = plugin_version.strip()
+        print(plugin_version)
+        print('Downloading VM-Series Plugin.')
+        cmd = '/api/?type=op&cmd=<request><plugins><download><file>' + plugin_version + '</file></download></plugins></request>'
         job_info = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
-        job_id = get_job_id(job_info)
-        monitor_job_status(job_id)
-        print('Latest VM plugins downloaded.')
-        cmd = '/api/?type=op&cmd=<show><plugins><packages></packages></plugins></show>'
-        available_plugins = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
-        print(available_plugins)
-        available_versions = []
-        for version in available_plugins['response']['result']['plugins']['entry']:
-            available_versions.append(version)
-        latest_version = max(available_versions)
-        print(available_plugins)
-        print(latest_version)
+        time.sleep(1)
+		#job_id = get_job_id(job_info)
+        #monitor_job_status(job_id)
+        print('VM-Series plugin downloaded.')
+        #cmd = '/api/?type=op&cmd=<show><plugins><packages></packages></plugins></show>'
+        #available_plugins = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+        #print(available_plugins)
+        #available_versions = []
+        #for version in available_plugins['response']['result']['plugins']['entry']:
+        #    available_versions.append(version)
+        #latest_version = max(available_versions)
+        #print(available_plugins)
+        #print(latest_version)
+        print('Installing VM-Series Plugin.')
+        cmd = '/api/?type=op&cmd=<request><plugins><install>' + plugin_version + '</install></plugins></request>'
+        job_info = xml_to_dictionary(palo_alto_api_call(device, cmd, **creditials))
+        print(job_info)
+        #job_id = get_job_id(job_info)
+        #monitor_job_status(job_id)
+        time.sleep(5)
+        print('VM-Series plugin installed.')
+    else:
+        pass
 
 
 def diff_candidate_running_config(candidate_configuration, running_configuration):
@@ -1050,24 +1110,29 @@ def get_desired_version():
     return desired_version
 
 
-def get_major_minor_base_release():
+def get_base_release():
     '''
     If current version is 8.1.9 and desired version is 9.0.3.  9.0.0 must also
-    be downloaded but does not have to be installed.
+    be downloaded but does not have to be installed.  If 9.1.3 then 9.1.0 must be installed.
     '''
-    #Desired version my be '9.0.0-h1'.  If that is the case we must split off the tail.
+    #Desired version my be '9.0.0-h1' or .xfr.  If that is the case we must split off the tail.
     desired_version_split = desired_version.split('-')[0]
-    #Current version my be '9.0.0-h1'.  If that is the case we must split off the tail.
+    desired_version_split = desired_version_split.split('.xfr')[0]
+	
+    #Current version my be '9.0.0-h1' or .xfr.  If that is the case we must split off the tail.
     current_version_string_split = current_version_string.split('-')[0]
+    current_version_string_split = current_version_string_split.split('.xfr')[0]
+	
     if Version(desired_version_split).release[0] > Version(current_version_string_split).release[0]:
         base_version = str(Version(desired_version_split).release[0]) + '.0' + '.0'
         print('Downloading base version ' + base_version + '.')
         return base_version
-    elif (Version(desired_version_split).release[0] == Version(current_version_string_split).release[0]) and (Version(desired_version_split).release[1] > Version(current_version_string_split).release[1]):
+    elif (Version(desired_version_split).release[0] == Version(current_version_string_split).release[0]) and (Version(desired_version_split).release[1] >= Version(current_version_string_split).release[1]):
         base_version = str(Version(desired_version_split).release[0]) + '.' + str(Version(desired_version_split).release[1]) + '.0'
         print('Downloading base version ' + base_version + '.')
         return base_version
     elif (Version(desired_version_split).release[0] == Version(current_version_string_split).release[0]) and (Version(desired_version_split).release[1] == Version(current_version_string_split).release[1]):
+        print('Not downloading a base version')
         return None
 
 
@@ -1075,7 +1140,7 @@ def download_base_software():
     '''
     '''
     # Start the download of the software and capture the Job ID
-    base_version = get_major_minor_base_release()
+    base_version = get_base_release()
     if base_version != None:
         cmd = '/api/?type=op&cmd=<request><system><software><download><version>' +\
             base_version + '</version><sync-to-peer>yes</sync-to-peer></download></software></system></request>'
@@ -1144,7 +1209,10 @@ if ha_info['response']['result']['enabled'] == 'no':
 
     # Get System Information
     system_info = get_system_info()
-
+	
+    # Create configuration snapshot
+    save_snapshot(device=device)
+	
     # Get current version
     current_version_string = get_current_version_string(system_info)
 
@@ -1178,6 +1246,9 @@ if ha_info['response']['result']['enabled'] == 'no':
 
     # Update anti-virus definitions
     update_anti_virus()
+
+	# Update VM-Series Plugin
+    #upgrade_vm_plugin(device=device)
 
     # Check current software version
     current_version_list = get_current_version_list()
@@ -1217,7 +1288,7 @@ elif ha_info['response']['result']['enabled'] == 'yes' and ha_info['response']['
 
     # Get System Information
     system_info = get_system_info()
-
+	
     # Get current version
     current_version_string = get_current_version_string(system_info)
 
@@ -1229,6 +1300,12 @@ elif ha_info['response']['result']['enabled'] == 'yes' and ha_info['response']['
     active = ha_devices['active']
     passive = ha_devices['passive']
     ha_pair = [active, passive]
+	
+    # Create configuration snapshot
+    save_snapshot(device=active)
+
+    # Create configuration snapshot
+    save_snapshot(device=passive)
 
     for device in ha_pair:
         device_system_info = get_system_info()
@@ -1266,6 +1343,12 @@ elif ha_info['response']['result']['enabled'] == 'yes' and ha_info['response']['
 
     # Update and Install anti-virus
     update_anti_virus()
+
+	# Update VM-Series Plugin
+    #upgrade_vm_plugin(device=active)
+
+	# Update VM-Series Plugin
+    #upgrade_vm_plugin(device=passive)
 
     # Check current software version
     current_version_list = get_current_version_list()
@@ -1351,6 +1434,12 @@ elif ha_info['response']['result']['enabled'] == 'yes' and ha_info['response']['
     active_primary = ha_devices['active_primary']
     active_secondary = ha_devices['active_secondary']
     ha_pair = [active_primary, active_secondary]
+	
+    # Create configuration snapshot
+    save_snapshot(device=active_primary)
+
+    # Create configuration snapshot
+    save_snapshot(device=active_secondary)
 
     for device in ha_pair:
         device_system_info = get_system_info()
@@ -1388,6 +1477,12 @@ elif ha_info['response']['result']['enabled'] == 'yes' and ha_info['response']['
 
     # Update anti-virus definitions
     update_anti_virus()
+
+	# Update VM-Series Plugin
+    upgrade_vm_plugin(device=active_primary)
+
+	# Update VM-Series Plugin
+    #upgrade_vm_plugin(device=active_secondary)
 
     # Check current software version
     current_version_list = get_current_version_list()
